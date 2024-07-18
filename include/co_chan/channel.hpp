@@ -9,6 +9,8 @@
 #include <coroutine>
 #include <utility>
 
+#include <co_chan/utils.hpp>
+
 class DummyScheduler
 {
   public:
@@ -23,13 +25,21 @@ class DummyScheduler
 // TODO
 // Copyable
 // Movable?
-// template <class T>
+template< class T >
 class channel
 {
   public:
-    channel();
-    channel( std::size_t capacity );
+    channel()
+        : capacity( 1 )
+    {
+    }
 
+    explicit channel( std::size_t theCapacity )
+        : capacity( theCapacity )
+    {
+        ASSERT_FORMAT( theCapacity != 0, "Channel capacity must be greater than 0" );
+    }
+    
     std::size_t getSize() const
     {
         const std::lock_guard< std::mutex > guard( mutex );
@@ -42,8 +52,74 @@ class channel
         return capacity;
     }
 
-    bool push( std::pair< int, std::coroutine_handle<> > value );
-    bool pop( std::pair< int*, std::coroutine_handle<> > receiver );
+    bool handleSend( std::pair< T, std::coroutine_handle<> > value )
+    {
+        std::unique_lock< std::mutex > guard( mutex );
+        const auto currentSize = sendQueue.size();
+
+        ASSERT( currentSize <= capacity, "Queue got larger than capacity. bug" );
+        if( sendQueue.size() == capacity )
+        {
+            senderWaiters.push_back( value );
+            return true;
+        }
+
+        // If not empty there are no receivers so just handleSend
+        if( !sendQueue.empty() )
+        {
+            ASSERT( receiverWaiters.empty(), "Bug or wrong assumption of that being impossible" );
+            sendQueue.push( value.first );
+            return false;
+        }
+
+        // If there's receiver just propagate value in its slot
+        if( !receiverWaiters.empty() )
+        {
+            const auto [ slot, receiverHandle ] = receiverWaiters.front();
+            receiverWaiters.pop_front();
+            *slot = value.first;
+
+            // Prevent double-locks
+            guard.unlock();
+
+            scheduler.schedule( receiverHandle );
+            return false;
+        }
+
+        sendQueue.push( value.first );
+        return false;
+    }
+
+    bool handleReceive( std::pair< T*, std::coroutine_handle<> > receiver )
+    {
+        std::unique_lock< std::mutex > guard( mutex );
+
+        // Nothing to receive - park
+        if( sendQueue.empty() )
+        {
+            receiverWaiters.push_back( receiver );
+            return true;
+        }
+
+        const T value = sendQueue.front();
+        sendQueue.pop();
+
+        // Was full and have sender waiters
+        if( sendQueue.size() + 1 == capacity && !senderWaiters.empty() )
+        {
+            const auto [ senderValue, senderHandle ] = senderWaiters.front();
+            senderWaiters.pop_front();
+            sendQueue.push( senderValue );
+
+            // Prevent double-locks
+            guard.unlock();
+
+            scheduler.schedule( senderHandle );
+        }
+
+        *receiver.first = std::move( value );
+        return false;
+    }
 
   private:
     // TODO: allow?
@@ -56,8 +132,8 @@ class channel
     DummyScheduler scheduler;
 
     std::size_t capacity;
-    std::queue< int > sendQueue; // TODO: change queue type + circular buffer
+    std::queue< T > sendQueue; // TODO: change queue type + circular buffer
 
-    std::list< std::pair< int, std::coroutine_handle<> > > senderWaiters;
-    std::list< std::pair< int*, std::coroutine_handle<> > > receiverWaiters;
+    std::list< std::pair< T, std::coroutine_handle<> > > senderWaiters;
+    std::list< std::pair< T*, std::coroutine_handle<> > > receiverWaiters;
 };

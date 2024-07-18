@@ -20,10 +20,12 @@ struct MyCoroutine: std::coroutine_handle< promise_type >
         : handle( h )
     {
     }
+
     ~MyCoroutine()
     {
-        if( handle )
-            handle.destroy();
+        // TODO: some error here
+        //        if( handle )
+        //            handle.destroy();
     }
 
     std::coroutine_handle< promise_type > handle;
@@ -56,7 +58,7 @@ struct promise_type
     }
 };
 
-MyCoroutine sender( Sender s )
+MyCoroutine sender( Sender< int > s )
 {
     std::cout << "sending" << std::endl;
 
@@ -76,13 +78,13 @@ MyCoroutine sender( Sender s )
     std::cout << "sent 5" << std::endl;
 }
 
-void send( Sender s )
+void send( Sender< int > s )
 {
+    std::this_thread::sleep_for( std::chrono::milliseconds( 500 ) );
     const auto handle = sender( s );
-    std::this_thread::sleep_for( std::chrono::milliseconds( 1000 ) );
 }
 
-MyCoroutine receiver( Receiver r )
+MyCoroutine receiver( Receiver< int > r )
 {
     int result;
     std::cout << "receiving" << std::endl;
@@ -103,15 +105,16 @@ MyCoroutine receiver( Receiver r )
     std::cout << "received(5): " << result << std::endl;
 }
 
-void receive( Receiver r )
+template< class T >
+void receive( Receiver< T > r )
 {
-    std::this_thread::sleep_for( std::chrono::milliseconds( 500 ) );
     auto coro = receiver( r );
+    std::this_thread::sleep_for( std::chrono::milliseconds( 1000 ) );
 }
 
 int main()
 {
-    channel* chan = new channel( 3 );
+    channel< int >* chan = new channel< int >( 3 );
     Sender s( chan );
 
     std::thread asd( send, s );

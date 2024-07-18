@@ -5,13 +5,15 @@
 
 #include <co_chan/channel.hpp>
 
+template< class T >
 class AwaitableReceive
 {
   public:
-    explicit AwaitableReceive( channel* theChan )
+    explicit AwaitableReceive( channel< T >* theChan )
         : chan( theChan )
     {
-        slot = new int();
+        // Need to check if this is ok
+        slot = new T();
     }
 
     ~AwaitableReceive()
@@ -20,32 +22,33 @@ class AwaitableReceive
         delete slot;
     }
 
-    bool await_ready()
+    constexpr bool await_ready()
     {
         return false;
     }
 
     bool await_suspend( std::coroutine_handle<> handle )
     {
-        return chan->pop( std::make_pair( slot, handle ) );
+        return chan->handleReceive( std::make_pair( slot, handle ) );
     }
 
     // TODO: return std::optional<int>
-    int await_resume()
+    T await_resume()
     {
         // TODO: return {} in case closed
         return *slot;
     }
 
   private:
-    int* slot;
-    channel* chan;
+    T* slot;
+    channel< T >* chan;
 };
 
+template< class T >
 class Receiver
 {
   public:
-    Receiver( channel* theChan )
+    Receiver( channel< T >* theChan )
         : chan( theChan )
     {
     }
@@ -55,11 +58,11 @@ class Receiver
         this->chan = receiver.chan;
     }
 
-    AwaitableReceive receive()
+    AwaitableReceive< T > receive()
     {
         return AwaitableReceive( chan );
     }
 
   private:
-    channel* chan;
+    channel< T >* chan;
 };

@@ -71,17 +71,3 @@
 // That means that receiver that read the value didn't pop waiting sender
 
 // id we can push there maybe waiting receivers
-Sender::Sender( channel* theChan )
-    : chan( theChan )
-{
-}
-
-Sender::Sender( const Sender& sender )
-{
-    this->chan = sender.chan;
-}
-
-AwaitableSend Sender::send( int value )
-{
-    return AwaitableSend{ value, chan };
-}

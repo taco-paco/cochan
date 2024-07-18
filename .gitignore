@@ -1,0 +1,6 @@
+# IDE related
+.idea
+cmake-build-debug
+
+# macOS
+.DS_Store

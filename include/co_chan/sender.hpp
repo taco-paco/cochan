@@ -5,10 +5,11 @@
 
 #include <co_chan/channel.hpp>
 
+template< class T >
 class AwaitableSend
 {
   public:
-    AwaitableSend( int theValue, channel* theChan )
+    AwaitableSend( int theValue, channel< T >* theChan )
         : value( theValue )
         , chan( theChan )
     {
@@ -21,7 +22,7 @@ class AwaitableSend
 
     bool await_suspend( std::coroutine_handle<> handle )
     {
-        return chan->push( std::make_pair( value, handle ) );
+        return chan->handleSend( std::make_pair( value, handle ) );
     }
 
     void await_resume()
@@ -32,17 +33,28 @@ class AwaitableSend
 
   private:
     int value;
-    channel* chan;
+    channel< T >* chan;
 };
 
+template< class T >
 class Sender
 {
   public:
-    Sender( channel* chan );
-    Sender( const Sender& sender );
+    Sender( channel< T >* theChan )
+        : chan( theChan )
+    {
+    }
 
-    AwaitableSend send( int value );
+    Sender( const Sender& sender )
+    {
+        this->chan = sender.chan;
+    }
+
+    AwaitableSend< T > send( T value )
+    {
+        return AwaitableSend{ value, chan };
+    }
 
   private:
-    channel* chan;
+    channel< T >* chan;
 };
