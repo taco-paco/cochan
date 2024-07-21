@@ -29,6 +29,8 @@ template< class T >
 class channel
 {
   public:
+    using storage_type = std::aligned_storage< sizeof( T ), alignof( T ) >::type;
+
     channel()
         : capacity( 1 )
     {
@@ -39,7 +41,7 @@ class channel
     {
         ASSERT_FORMAT( theCapacity != 0, "Channel capacity must be greater than 0" );
     }
-    
+
     std::size_t getSize() const
     {
         const std::lock_guard< std::mutex > guard( mutex );
@@ -52,7 +54,7 @@ class channel
         return capacity;
     }
 
-    bool handleSend( std::pair< T, std::coroutine_handle<> > value )
+    bool handleSend( std::pair< T*, std::coroutine_handle<> > value )
     {
         std::unique_lock< std::mutex > guard( mutex );
         const auto currentSize = sendQueue.size();
@@ -68,16 +70,16 @@ class channel
         if( !sendQueue.empty() )
         {
             ASSERT( receiverWaiters.empty(), "Bug or wrong assumption of that being impossible" );
-            sendQueue.push( value.first );
+            sendQueue.emplace( std::move( *value.first ) );
             return false;
         }
 
         // If there's receiver just propagate value in its slot
         if( !receiverWaiters.empty() )
         {
-            const auto [ slot, receiverHandle ] = receiverWaiters.front();
+            const auto [ storage_ptr, receiverHandle ] = receiverWaiters.front();
             receiverWaiters.pop_front();
-            *slot = value.first;
+            ::new( storage_ptr ) T( std::move( *value.first ) );
 
             // Prevent double-locks
             guard.unlock();
@@ -86,11 +88,11 @@ class channel
             return false;
         }
 
-        sendQueue.push( value.first );
+        sendQueue.emplace( std::move( *value.first ) );
         return false;
     }
 
-    bool handleReceive( std::pair< T*, std::coroutine_handle<> > receiver )
+    bool handleReceive( std::pair< storage_type*, std::coroutine_handle<> > receiver )
     {
         std::unique_lock< std::mutex > guard( mutex );
 
@@ -101,7 +103,7 @@ class channel
             return true;
         }
 
-        const T value = sendQueue.front();
+        const T value = std::move( sendQueue.front() );
         sendQueue.pop();
 
         // Was full and have sender waiters
@@ -109,7 +111,7 @@ class channel
         {
             const auto [ senderValue, senderHandle ] = senderWaiters.front();
             senderWaiters.pop_front();
-            sendQueue.push( senderValue );
+            sendQueue.emplace( std::move( *senderValue ) );
 
             // Prevent double-locks
             guard.unlock();
@@ -117,7 +119,7 @@ class channel
             scheduler.schedule( senderHandle );
         }
 
-        *receiver.first = std::move( value );
+        new( receiver.first ) T( std::move( value ) );
         return false;
     }
 
@@ -134,6 +136,6 @@ class channel
     std::size_t capacity;
     std::queue< T > sendQueue; // TODO: change queue type + circular buffer
 
-    std::list< std::pair< T, std::coroutine_handle<> > > senderWaiters;
-    std::list< std::pair< T*, std::coroutine_handle<> > > receiverWaiters;
+    std::list< std::pair< T*, std::coroutine_handle<> > > senderWaiters;
+    std::list< std::pair< storage_type*, std::coroutine_handle<> > > receiverWaiters;
 };

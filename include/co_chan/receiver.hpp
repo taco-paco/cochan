@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <coroutine>
+#include <memory>
 
 #include <co_chan/channel.hpp>
 
@@ -12,15 +13,10 @@ class AwaitableReceive
     explicit AwaitableReceive( channel< T >* theChan )
         : chan( theChan )
     {
-        // Need to check if this is ok
-        slot = new T();
     }
 
-    ~AwaitableReceive()
-    {
-        // TODO: think what if channel destructed itself
-        delete slot;
-    }
+    // TODO
+    ~AwaitableReceive() = default;
 
     constexpr bool await_ready()
     {
@@ -29,19 +25,19 @@ class AwaitableReceive
 
     bool await_suspend( std::coroutine_handle<> handle )
     {
-        return chan->handleReceive( std::make_pair( slot, handle ) );
+        return chan->handleReceive( std::make_pair( &storage, handle ) );
     }
 
     // TODO: return std::optional<int>
     T await_resume()
     {
         // TODO: return {} in case closed
-        return *slot;
+        return std::move( *std::launder( reinterpret_cast< T* >( &storage ) ) );
     }
 
   private:
-    T* slot;
     channel< T >* chan;
+    channel< T >::storage_type storage;
 };
 
 template< class T >

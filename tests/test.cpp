@@ -62,7 +62,8 @@ MyCoroutine sender( Sender< int > s )
 {
     std::cout << "sending" << std::endl;
 
-    co_await s.send( 1 );
+    int val1 = 1;
+    co_await s.send( val1 );
     std::cout << "sent 1" << std::endl;
 
     co_await s.send( 2 );
@@ -80,8 +81,9 @@ MyCoroutine sender( Sender< int > s )
 
 void send( Sender< int > s )
 {
-    std::this_thread::sleep_for( std::chrono::milliseconds( 500 ) );
     const auto handle = sender( s );
+    std::cout << "send sleeping" << std::endl;
+    std::this_thread::sleep_for( std::chrono::milliseconds( 1000 ) );
 }
 
 MyCoroutine receiver( Receiver< int > r )
@@ -108,8 +110,8 @@ MyCoroutine receiver( Receiver< int > r )
 template< class T >
 void receive( Receiver< T > r )
 {
+    std::this_thread::sleep_for( std::chrono::milliseconds( 500 ) );
     auto coro = receiver( r );
-    std::this_thread::sleep_for( std::chrono::milliseconds( 1000 ) );
 }
 
 int main()
