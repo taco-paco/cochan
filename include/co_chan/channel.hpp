@@ -83,6 +83,7 @@ class channel
 
     void onSenderClose()
     {
+        std::unique_lock< std::mutex > guard( mutex );
         closed = true;
         if( receiverWaiters.empty() )
         {
@@ -90,7 +91,10 @@ class channel
         }
 
         ASSERT( sendQueue.empty() && senderWaiters.empty(), "Bug or wrong assumption of that being impossible" );
-        std::for_each( receiverWaiters.begin(), receiverWaiters.end(), [ this ]( const auto& el ) {
+        const auto waitersCopy = receiverWaiters;
+        guard.unlock();
+
+        std::for_each( waitersCopy.begin(), waitersCopy.end(), [ this ]( const auto& el ) {
             const auto [ result, receiverHandle ] = el;
             *result = std::nullopt;
             this->scheduler.schedule( receiverWaiters );
@@ -108,11 +112,32 @@ class channel
         // If after that receiverPermit triggered it will fall under 1st branch above
     }
 
+    void onReceiverClose()
+    {
+        std::unique_lock< std::mutex > guard( mutex );
+
+        closed = true;
+        if( senderWaiters.empty() )
+        {
+            return;
+        }
+
+        ASSERT( sendQueue.size() == capacity && receiverWaiters.empty(), "" )
+        const auto waitersCopy = senderWaiters;
+        guard.unlock();
+
+        std::for_each( waitersCopy.begin(), waitersCopy.end(), [ this ]( const auto& el ) {
+            const auto [ val_ptr, handle ] = el;
+            this->scheduler.schedule( handle );
+        } );
+    }
+
     void close()
     {
         closed = true;
 
         std::unique_lock< std::mutex > guard( mutex );
+        // TODO: remove?
         if( !receiverWaiters.empty() )
         {
             ASSERT( sendQueue.empty() && senderWaiters.empty(), "Bug or wrong assumption of that being impossible" );
@@ -152,15 +177,17 @@ class channel
 
     bool handleSend( std::pair< T*, std::coroutine_handle<> > value )
     {
-        // Move to AwaitableSend::await_suspend?
-        senderPermits--;
-
         std::unique_lock< std::mutex > guard( mutex );
         const auto currentSize = sendQueue.size();
 
         ASSERT( currentSize <= capacity, "Queue got larger than capacity. bug" );
         if( sendQueue.size() == capacity )
         {
+            if( receivers == 0 && receiverPermits == 0 )
+            {
+                return false;
+            }
+
             senderWaiters.push_back( value );
             return true;
         }
@@ -196,17 +223,27 @@ class channel
         // TODO: Move to AwaitableReceive::await_suspend?
         // TODO: safe here? Last sender destroyed right after. will call delete on chan
         // If move to destructor same as receiverWaiters.size()
-        receiverPermits--;
+        // receiverPermits--;
 
         std::unique_lock< std::mutex > guard( mutex );
         if( sendQueue.empty() )
         {
             // No one will send anything already
+            // -----
+            // This is not working if --senderPermits in destructor
+            // Cause all of them can be suspended. so we will park
+
+            // if( senders == 0 && ( sendAwaiters - senderWaiters.size() ) == 0 )
+            // senderWaiters shall be empty. Optimization found?
             if( senders == 0 && senderPermits == 0 )
             {
                 *receiver.first = std::nullopt;
                 return false;
             }
+            // So here the idea is:
+            // If we have senders and not triggered permits.
+            // Then we can park because they will wake us up.
+            // This logic above won't work if
 
             // Nothing to receive - park
             // Senders or AwaitableSends will wake up everyone eventually
@@ -214,6 +251,8 @@ class channel
             receiverWaiters.push_back( receiver );
             return true;
         }
+
+        ASSERT( receiverWaiters.empty(), "If element's in queue receiverWaiters shall be empty" )
 
         const T value = std::move( sendQueue.front() );
         sendQueue.pop();
@@ -229,6 +268,15 @@ class channel
             guard.unlock();
 
             scheduler.schedule( senderHandle );
+        }
+
+        // TODO: if last receiver call. Wake up all senders
+        // replace with: if (receivers == 0 && (awaiters - receiverWaiter.size())) == 0)
+        // but if sendQueue.size() != 0, receiverWaiter.size() == 0, so
+        // replace with (receivers == 0 && awaiters == 1) (the last one)
+        if( receivers == 0 && receiverPermits == 0 )
+        {
+            //
         }
 
         *receiver.first = std::move( value );

@@ -45,6 +45,9 @@ class AwaitableReceive
 
     constexpr bool await_ready()
     {
+        // Mark as executed
+        chan->receiverPermits--;
+        executed = true;
         return false;
     }
 

@@ -7,24 +7,12 @@
 #include <co_chan/channel.hpp>
 
 template< class T >
+class Sender;
+
+template< class T >
 class AwaitableSend
 {
   public:
-    AwaitableSend( const T& theValue, channel< T >* theChan )
-        : value( theValue )
-        , chan( theChan )
-    {
-        // weakptr on Sender instead?
-        chan->senderPermits++;
-    }
-
-    AwaitableSend( T&& theValue, channel< T >* theChan )
-        : value( std::move( theValue ) )
-        , chan( theChan )
-    {
-        chan->senderPermits++;
-    }
-
     AwaitableSend( const AwaitableSend& ) = delete;
     AwaitableSend( AwaitableSend&& other ) noexcept
     {
@@ -35,6 +23,8 @@ class AwaitableSend
 
     ~AwaitableSend()
     {
+        // The desctruction of all meands permits == 0, and empty senderWaiters
+        // Would be the case if it ouldn't be 0
         if( !executed )
         {
             chan->senderPermits--;
@@ -56,19 +46,17 @@ class AwaitableSend
     AwaitableSend& operator=( const AwaitableSend& ) = delete;
     AwaitableSend& operator=( AwaitableSend&& other ) = delete;
 
-    bool await_ready() const
+    bool await_ready()
     {
+        chan->senderPermits--;
+        executed = true;
+
         return false;
     }
 
     bool await_suspend( std::coroutine_handle<> handle )
     {
-        bool suspend = chan->handleSend( std::make_pair( &value, handle ) );
-        executed = true;
-
-        // TODO: double free?
-        // Assume marked. Last receiver called and got it. It an use will free this
-        chan->senderPermits--;
+        return chan->handleSend( std::make_pair( &value, handle ) );
     }
 
     void await_resume()
@@ -76,6 +64,23 @@ class AwaitableSend
     }
 
   private:
+    AwaitableSend( const T& theValue, channel< T >* theChan )
+        : value( theValue )
+        , chan( theChan )
+    {
+        // weakptr on Sender instead?
+        chan->senderPermits++;
+    }
+
+    AwaitableSend( T&& theValue, channel< T >* theChan )
+        : value( std::move( theValue ) )
+        , chan( theChan )
+    {
+        chan->senderPermits++;
+    }
+
+    friend Sender< T >;
+
     T value;
     // TODO: use weak_ptr instead and get rid of permits?
     channel< T >* chan;
@@ -88,11 +93,7 @@ template< class T >
 class Sender
 {
   public:
-    Sender( channel< T >* theChan )
-        : chan( theChan )
-    {
-        chan->senders++;
-    }
+    Sender() = delete;
 
     Sender( const Sender& sender )
     {
@@ -144,6 +145,16 @@ class Sender
     }
 
   private:
+    Sender( channel< T >* theChan )
+        : chan( theChan )
+    {
+        chan->senders++;
+    }
+
+    template< class U >
+    friend std::tuple< Sender< U >, Receiver< U > > makeChannel( std::size_t capacity );
+
     // TODO: use shared_ptr instead?
     channel< T >* chan;
+    std::atomic_uint32_t* awaitableAndSendersCounter;
 };
