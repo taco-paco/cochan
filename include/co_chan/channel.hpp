@@ -45,23 +45,8 @@ class channel
   public:
     ~channel()
     {
-        if( !receiverWaiters.empty() )
-        {
-            ASSERT( sendQueue.empty() && senderWaiters.empty(), "Bug or wrong assumption of that being impossible. channel::~channel" );
-            std::for_each( receiverWaiters.begin(), receiverWaiters.end(), [ this ]( const auto& el ) {
-                const auto [ result, receiverHandle ] = el;
-                *result = std::nullopt;
-                this->scheduler.schedule( receiverWaiters );
-            } );
-
-            return;
-        }
-
-        // Questionable: value may be sent but not received by anyone.
-        std::for_each( senderWaiters.begin(), senderWaiters.end(), [ this ]( const auto& el ) {
-            const auto [ senderValue, senderHandle ] = senderWaiters.front();
-            scheduler.schedule( senderHandle );
-        } );
+        ASSERT( receiverWaiters.empty(), "Should be handled by last sendable object" );
+        ASSERT( senderWaiters.empty(), "Should be handled ny last receivable object" );
     }
 
     std::size_t getSize() const
@@ -76,15 +61,11 @@ class channel
         return capacity;
     }
 
-    bool canDelete()
-    {
-        return senders == 0 && senderPermits == 0 && receivers == 0 && receiverPermits == 0;
-    }
-
     void onSenderClose()
     {
-        std::unique_lock< std::mutex > guard( mutex );
         closed = true;
+
+        std::unique_lock< std::mutex > guard( mutex );
         if( receiverWaiters.empty() )
         {
             return;
@@ -92,7 +73,7 @@ class channel
 
         ASSERT( sendQueue.empty() && senderWaiters.empty(), "Bug or wrong assumption of that being impossible" );
         const auto waitersCopy = receiverWaiters;
-        guard.unlock();
+        guard.unlock(); // Prevent double-lock
 
         std::for_each( waitersCopy.begin(), waitersCopy.end(), [ this ]( const auto& el ) {
             const auto [ result, receiverHandle ] = el;
@@ -114,9 +95,9 @@ class channel
 
     void onReceiverClose()
     {
-        std::unique_lock< std::mutex > guard( mutex );
-
         closed = true;
+
+        std::unique_lock< std::mutex > guard( mutex );
         if( senderWaiters.empty() )
         {
             return;
@@ -143,7 +124,7 @@ class channel
             ASSERT( sendQueue.empty() && senderWaiters.empty(), "Bug or wrong assumption of that being impossible" );
 
             auto it = receiverWaiters.begin();
-            std::advance( it, std::min( senderPermits.load(), receiverWaiters.size() ) );
+            std::advance( it, std::min( awaitableSenders.load(), receiverWaiters.size() ) );
 
             std::list< std::pair< T*, std::coroutine_handle<> > > toSchedule;
             toSchedule.splice( toSchedule.end(), receiverWaiters, it, receiverWaiters.end() );
@@ -183,7 +164,7 @@ class channel
         ASSERT( currentSize <= capacity, "Queue got larger than capacity. bug" );
         if( sendQueue.size() == capacity )
         {
-            if( receivers == 0 && receiverPermits == 0 )
+            if( receivers == 0 && awaitableReceivers == 0 )
             {
                 return false;
             }
@@ -235,11 +216,12 @@ class channel
 
             // if( senders == 0 && ( sendAwaiters - senderWaiters.size() ) == 0 )
             // senderWaiters shall be empty. Optimization found?
-            if( senders == 0 && senderPermits == 0 )
+            if( ( senders == 0 || closed ) && awaitableSenders == 0 )
             {
                 *receiver.first = std::nullopt;
                 return false;
             }
+
             // So here the idea is:
             // If we have senders and not triggered permits.
             // Then we can park because they will wake us up.
@@ -274,7 +256,7 @@ class channel
         // replace with: if (receivers == 0 && (awaiters - receiverWaiter.size())) == 0)
         // but if sendQueue.size() != 0, receiverWaiter.size() == 0, so
         // replace with (receivers == 0 && awaiters == 1) (the last one)
-        if( receivers == 0 && receiverPermits == 0 )
+        if( receivers == 0 && awaitableReceivers == 0 )
         {
             //
         }
@@ -287,8 +269,8 @@ class channel
 
     std::atomic_uint32_t senders = 0;
     std::atomic_uint32_t receivers = 0;
-    std::atomic_uint32_t senderPermits = 0;
-    std::atomic_uint32_t receiverPermits = 0;
+    std::atomic_uint32_t awaitableSenders = 0;
+    std::atomic_uint32_t awaitableReceivers = 0;
 
   private:
     explicit channel( std::size_t theCapacity )
