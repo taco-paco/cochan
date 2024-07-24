@@ -13,10 +13,35 @@ class AwaitableReceive
     explicit AwaitableReceive( channel< T >* theChan )
         : chan( theChan )
     {
+        chan->receiverPermits++;
     }
 
-    // TODO
-    ~AwaitableReceive() = default;
+    AwaitableReceive( AwaitableReceive&& other ) noexcept
+    {
+        // TODO: check
+        this->result = std::move( other.result );
+        std::swap( this->chan, other.chan );
+    }
+
+    AwaitableReceive( const AwaitableReceive& ) = delete;
+
+    ~AwaitableReceive()
+    {
+        if( !executed )
+        {
+            chan->receiverPermits--;
+        }
+
+        if( !( chan->senderPermits == 0 && chan->receiverPermits == 0 && chan->senders == 0 && chan->receivers == 0 ) )
+        {
+            return;
+        }
+
+        delete chan;
+    }
+
+    AwaitableReceive& operator=( const AwaitableReceive& ) = delete;
+    AwaitableReceive& operator=( AwaitableReceive&& ) = delete;
 
     constexpr bool await_ready()
     {
@@ -25,33 +50,52 @@ class AwaitableReceive
 
     bool await_suspend( std::coroutine_handle<> handle )
     {
-        return chan->handleReceive( std::make_pair( &storage, handle ) );
+        executed = true;
+        return chan->handleReceive( std::make_pair( &result, handle ) );
     }
 
-    // TODO: return std::optional<int>
-    T await_resume()
+    std::optional< T > await_resume()
     {
-        // TODO: return {} in case closed
-        return std::move( *std::launder( reinterpret_cast< T* >( &storage ) ) );
+        return result;
     }
 
   private:
+    bool executed = false;
+
     channel< T >* chan;
-    channel< T >::storage_type storage;
+    std::optional< T > result;
 };
 
 template< class T >
 class Receiver
 {
   public:
-    Receiver( channel< T >* theChan )
+    explicit Receiver( channel< T >* theChan )
         : chan( theChan )
     {
+        chan->receivers++;
     }
 
     Receiver( const Receiver& receiver )
     {
-        this->chan = receiver.chan;
+        chan = receiver.chan;
+        chan->receivers++;
+    }
+
+    Receiver( Receiver&& receiver ) noexcept
+    {
+        // TODO: check
+        std::swap( chan, receiver.chan );
+    }
+
+    ~Receiver()
+    {
+        if( --chan->receivers != 0 )
+        {
+            return;
+        }
+
+        // TODO: logic
     }
 
     AwaitableReceive< T > receive()

@@ -9,6 +9,7 @@
 #include <co_chan/channel.hpp>
 #include <co_chan/sender.hpp>
 #include <co_chan/receiver.hpp>
+#include <co_chan/utils.hpp>
 
 struct promise_type;
 
@@ -19,13 +20,6 @@ struct MyCoroutine: std::coroutine_handle< promise_type >
     MyCoroutine( std::coroutine_handle< promise_type > h )
         : handle( h )
     {
-    }
-
-    ~MyCoroutine()
-    {
-        // TODO: some error here
-        //        if( handle )
-        //            handle.destroy();
     }
 
     std::coroutine_handle< promise_type > handle;
@@ -111,17 +105,15 @@ template< class T >
 void receive( Receiver< T > r )
 {
     std::this_thread::sleep_for( std::chrono::milliseconds( 500 ) );
-    auto coro = receiver( r );
+    MyCoroutine coro = receiver( r );
 }
 
 int main()
 {
-    channel< int >* chan = new channel< int >( 3 );
-    Sender s( chan );
-
+    auto [ s, r ] = makeChannel< int >( 3 );
     std::thread asd( send, s );
 
-    receive( Receiver( chan ) );
+    receive( r );
 
     asd.join();
 }

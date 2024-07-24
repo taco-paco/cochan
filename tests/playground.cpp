@@ -1,5 +1,6 @@
 #include <coroutine>
 #include <iostream>
+#include <list>
 
 struct promise_type;
 
@@ -66,13 +67,36 @@ struct promise_type
 MyCoroutine my_coroutine()
 {
     std::cout << "Step 1\n";
+    auto sus = suspend_always_custom{};
+
     co_await std::suspend_always{};
     std::cout << "Step 2\n";
+    co_await sus;
 }
 
 int main()
 {
+    std::list< int > asd = { 1, 2, 3, 4, 5 };
+    auto it = asd.begin();
+    std::advance( it, asd.size() );
+
+    std::list< int > kek;
+    kek.splice( kek.end(), asd, it, asd.end() );
+
+    for( auto el : asd )
+    {
+        std::cout << el << std::endl;
+    }
+
+    std::cout << "asd" << std::endl;
+
+    for( auto el : kek )
+    {
+        std::cout << el << std::endl;
+    }
+
     auto coro = my_coroutine();
+    coro.handle.resume();
     coro.handle.resume();
     coro.handle.resume();
 }
