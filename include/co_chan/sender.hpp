@@ -15,14 +15,19 @@ class AwaitableSend
   public:
     AwaitableSend( const AwaitableSend& ) = delete;
     AwaitableSend( AwaitableSend&& other ) noexcept
+        : value( std::move( other.value ) )
+        , chan( other.chan )
     {
-        // TODO: check
-        this->value = std::move( other.value );
-        std::swap( this->chan, other.chan );
+        other.chan = nullptr;
     }
 
     ~AwaitableSend()
     {
+        if( !chan )
+        {
+            return;
+        }
+
         // The desctruction of all meands permits == 0, and empty senderWaiters
         // Would be the case if it ouldn't be 0
         if( --chan->awaitableSenders == 0 && chan->senders == 0 )
@@ -30,6 +35,7 @@ class AwaitableSend
             if( chan->receivers == 0 && chan->awaitableReceivers == 0 )
             {
                 delete chan;
+                return;
             }
 
             chan->onSenderClose();
@@ -72,7 +78,6 @@ class AwaitableSend
     friend Sender< T >;
 
     T value;
-    // TODO: use weak_ptr instead and get rid of permits?
     channel< T >* chan;
 };
 
@@ -88,14 +93,19 @@ class Sender
         chan->senders++;
     }
 
-    Sender( Sender&& sender ) noexcept
+    Sender( Sender&& other ) noexcept
+        : chan( other.chan )
     {
-        // TODO: check
-        std::swap( this->chan, sender.chan );
+        other.chan = nullptr;
     }
 
     ~Sender()
     {
+        if( !chan )
+        {
+            return;
+        }
+
         // TODO: Check if  chan->senders == 0 is atomic in relation to awaitableSenders == 0
         // Or if it can cause problems
         if( --chan->senders == 0 && chan->awaitableSenders == 0 )
@@ -141,6 +151,5 @@ class Sender
     template< class U >
     friend std::tuple< Sender< U >, Receiver< U > > makeChannel( std::size_t capacity );
 
-    // TODO: use shared_ptr instead?
     channel< T >* chan;
 };

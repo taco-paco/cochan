@@ -15,21 +15,27 @@ class AwaitableReceive
   public:
     AwaitableReceive() = delete;
     AwaitableReceive( AwaitableReceive&& other ) noexcept
+        : result( std::move( other.value ) )
+        , chan( other.chan )
     {
-        // TODO: check
-        this->result = std::move( other.result );
-        std::swap( this->chan, other.chan );
+        other.chan = nullptr;
     }
 
     AwaitableReceive( const AwaitableReceive& ) = delete;
 
     ~AwaitableReceive()
     {
+        if( !chan )
+        {
+            return;
+        }
+
         if( --chan->awaitableReceivers == 0 && chan->receivers == 0 )
         {
-            if( chan->senders == 0 && chan->awaitableSenders )
+            if( chan->senders == 0 && chan->awaitableSenders == 0 )
             {
                 delete chan;
+                return;
             }
 
             chan->onReceiverClose();
@@ -80,19 +86,25 @@ class Receiver
         chan->receivers++;
     }
 
-    Receiver( Receiver&& receiver ) noexcept
+    Receiver( Receiver&& other ) noexcept
+        : chan( other.chan )
     {
-        // TODO: check
-        std::swap( chan, receiver.chan );
+        other.chan = nullptr;
     }
 
     ~Receiver()
     {
+        if( !chan )
+        {
+            return;
+        }
+
         if( --chan->receivers == 0 && chan->awaitableReceivers == 0 )
         {
-            if( chan->senders == 0 && chan->awaitableSenders )
+            if( chan->senders == 0 && chan->awaitableSenders == 0 )
             {
                 delete chan;
+                return;
             }
 
             chan->onReceiverClose();

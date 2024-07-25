@@ -82,23 +82,23 @@ void send( Sender< int > s )
 
 MyCoroutine receiver( Receiver< int > r )
 {
-    int result;
+    std::optional< int > result;
     std::cout << "receiving" << std::endl;
 
     result = co_await r.receive();
-    std::cout << "received(1): " << result << std::endl;
+    std::cout << "received(1): " << *result << std::endl;
 
     result = co_await r.receive();
-    std::cout << "received(2): " << result << std::endl;
+    std::cout << "received(2): " << *result << std::endl;
 
     result = co_await r.receive();
-    std::cout << "received(3): " << result << std::endl;
+    std::cout << "received(3): " << *result << std::endl;
 
     result = co_await r.receive();
-    std::cout << "received(4): " << result << std::endl;
+    std::cout << "received(4): " << *result << std::endl;
 
     result = co_await r.receive();
-    std::cout << "received(5): " << result << std::endl;
+    std::cout << "received(5): " << *result << std::endl;
 }
 
 template< class T >
