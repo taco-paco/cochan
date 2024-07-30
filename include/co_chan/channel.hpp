@@ -21,15 +21,9 @@ class ChannelClosedException: public std::exception
     }
 };
 
-class DummyScheduler
-{
-  public:
-    DummyScheduler() = default;
-
-    void schedule( std::coroutine_handle<> handle )
-    {
-        handle.resume();
-    }
+using ScheduleFunc = std::function< void( std::coroutine_handle<> ) >;
+const ScheduleFunc dummyScheduleFunc = []( std::coroutine_handle<> handle ) {
+    handle.resume();
 };
 
 template< typename T >
@@ -79,7 +73,7 @@ class channel
         std::for_each( waitersCopy.begin(), waitersCopy.end(), [ this ]( const auto& el ) {
             const auto [ result, receiverHandle ] = el;
             *result = std::nullopt;
-            this->scheduler.schedule( receiverHandle );
+            this->scheduleFunc( receiverHandle );
         } );
     }
 
@@ -101,7 +95,7 @@ class channel
 
         std::for_each( waitersCopy.begin(), waitersCopy.end(), [ this ]( const auto& el ) {
             const auto [ val_ptr, handle ] = el;
-            this->scheduler.schedule( handle );
+            this->scheduleFunc( handle );
         } );
     }
 
@@ -140,7 +134,7 @@ class channel
             // Prevent double-locks
             guard.unlock();
 
-            scheduler.schedule( receiverHandle );
+            scheduleFunc( receiverHandle );
             return false;
         }
 
@@ -180,7 +174,7 @@ class channel
             // Prevent double-locks
             guard.unlock();
 
-            scheduler.schedule( senderHandle );
+            scheduleFunc( senderHandle );
         }
 
         *receiver.first = std::move( value );
@@ -195,8 +189,9 @@ class channel
     std::atomic_uint32_t awaitableReceivers = 0;
 
   private:
-    explicit channel( std::size_t theCapacity )
+    explicit channel( std::size_t theCapacity, const ScheduleFunc& theScheduleFunc )
         : capacity( theCapacity )
+        , scheduleFunc( theScheduleFunc )
     {
         ASSERT_FORMAT( theCapacity != 0, "Channel capacity must be greater than 0" );
     }
@@ -207,10 +202,9 @@ class channel
     mutable std::mutex mutex;
 
     template< class U >
-    friend std::tuple< Sender< U >, Receiver< U > > makeChannel( std::size_t capacity );
+    friend std::tuple< Sender< U >, Receiver< U > > makeChannel( std::size_t capacity, const ScheduleFunc& );
 
-    // TODO: generic
-    DummyScheduler scheduler;
+    ScheduleFunc scheduleFunc;
 
     std::size_t capacity;
     std::queue< T > sendQueue; // TODO: change queue type + circular buffer
@@ -220,8 +214,8 @@ class channel
 };
 
 template< class T >
-std::tuple< Sender< T >, Receiver< T > > makeChannel( std::size_t capacity = 1 )
+std::tuple< Sender< T >, Receiver< T > > makeChannel( std::size_t capacity = 1, const ScheduleFunc& schedule = dummyScheduleFunc )
 {
-    auto chan = new channel< T >( capacity );
+    auto chan = new channel< T >( capacity, dummyScheduleFunc );
     return { Sender{ chan }, Receiver{ chan } };
 }

@@ -6,114 +6,110 @@
 #include <thread>
 #include <chrono>
 
+#include "dummy_coro.hpp"
+
 #include <co_chan/channel.hpp>
 #include <co_chan/sender.hpp>
 #include <co_chan/receiver.hpp>
-#include <co_chan/utils.hpp>
 
-struct promise_type;
+const uint32_t NUM_SEND_ITEMS = 5;
 
-struct MyCoroutine: std::coroutine_handle< promise_type >
-{
-    using promise_type = ::promise_type;
-
-    MyCoroutine( std::coroutine_handle< promise_type > h )
-        : handle( h )
-    {
-    }
-
-    std::coroutine_handle< promise_type > handle;
-};
-
-struct promise_type
-{
-    MyCoroutine get_return_object()
-    {
-        return MyCoroutine{ std::coroutine_handle< promise_type >::from_promise( *this ) };
-    }
-
-    std::suspend_never initial_suspend()
-    {
-        return {};
-    }
-
-    std::suspend_never final_suspend() noexcept
-    {
-        return {};
-    }
-
-    void unhandled_exception()
-    {
-        std::terminate();
-    }
-
-    void return_void()
-    {
-    }
-};
-
-MyCoroutine sender( Sender< int > s )
+MyCoroutine send( Sender< int > s )
 {
     std::cout << "sending" << std::endl;
 
-    int val1 = 1;
-    co_await s.send( val1 );
-    std::cout << "sent 1" << std::endl;
+    for( uint i = 0; i < NUM_SEND_ITEMS; i++ )
+    {
+        co_await s.send( i );
+        std::cout << "sent " << i << std::endl;
+    }
 
-    co_await s.send( 2 );
-    std::cout << "sent 2" << std::endl;
-
-    co_await s.send( 3 );
-    std::cout << "sent 3" << std::endl;
-
-    co_await s.send( 4 );
-    std::cout << "sent 4" << std::endl;
-
-    co_await s.send( 5 );
-    std::cout << "sent 5" << std::endl;
+    co_return;
 }
 
-void send( Sender< int > s )
+void syncSend( Sender< int > s )
 {
-    const auto handle = sender( s );
-    std::cout << "send sleeping" << std::endl;
-    std::this_thread::sleep_for( std::chrono::milliseconds( 1000 ) );
+    MyCoroutine coro = send( std::move( s ) );
+    while( !coro.handle.done() )
+    {
+        std::this_thread::sleep_for( std::chrono::milliseconds( 100 ) );
+    }
 }
 
-MyCoroutine receiver( Receiver< int > r )
+MyCoroutine receive( Receiver< int > r )
 {
-    std::optional< int > result;
-    std::cout << "receiving" << std::endl;
+    uint32_t received = 0;
+    while( true )
+    {
+        auto val = co_await r.receive();
+        if( !val )
+        {
+            break;
+        }
 
-    result = co_await r.receive();
-    std::cout << "received(1): " << *result << std::endl;
+        std::cout << "received " << *val << std::endl;
+        received++;
+    }
 
-    result = co_await r.receive();
-    std::cout << "received(2): " << *result << std::endl;
+    ASSERT( received == NUM_SEND_ITEMS, "Received wrong amount" );
 
-    result = co_await r.receive();
-    std::cout << "received(3): " << *result << std::endl;
-
-    result = co_await r.receive();
-    std::cout << "received(4): " << *result << std::endl;
-
-    result = co_await r.receive();
-    std::cout << "received(5): " << *result << std::endl;
+    co_return;
 }
+
+void syncReceive( Receiver< int > r )
+{
+    MyCoroutine coro = receive( std::move( r ) );
+    while( !coro.handle.done() )
+    {
+        std::this_thread::sleep_for( std::chrono::milliseconds( 100 ) );
+    }
+}
+
+const ScheduleFunc dumbSchedule = []( std::coroutine_handle<> handle ) {
+    std::thread t( [ handle ]() {
+        handle.resume();
+    } );
+
+    t.detach();
+};
 
 template< class T >
-void receive( Receiver< T > r )
+void drop( T t )
 {
-    std::this_thread::sleep_for( std::chrono::milliseconds( 500 ) );
-    MyCoroutine coro = receiver( r );
 }
 
 int main()
 {
-    auto [ s, r ] = makeChannel< int >( 3 );
-    std::thread asd( send, s );
+    {
+        auto [ s, r ] = makeChannel< int >( 3 );
 
-    receive( r );
+        auto sendCoro = send( std::move( s ) );
+        auto receiveCoro = receive( std::move( r ) );
 
-    asd.join();
+        ASSERT( sendCoro.handle.done(), "Coroutines should complete each other within 1 thread." )
+        drop( std::move( sendCoro ) );
+
+        ASSERT( receiveCoro.handle.done(), "Coroutines should complete each other within 1 thread." )
+    }
+
+    {
+        auto [ s, r ] = makeChannel< int >( 3 );
+
+        auto receiveCoro = receive( std::move( r ) );
+        auto sendCoro = send( std::move( s ) );
+        ASSERT( sendCoro.handle.done(), "Coroutines should complete each other within 1 thread." )
+        drop( std::move( sendCoro ) );
+
+        ASSERT( receiveCoro.handle.done(), "Coroutines should complete each other within 1 thread." )
+    }
+
+    {
+        auto [ s, r ] = makeChannel< int >( 3, dumbSchedule );
+
+        std::thread st( syncSend, std::move( s ) );
+        std::thread rt( syncReceive, std::move( r ) );
+
+        st.join();
+        rt.join();
+    }
 }

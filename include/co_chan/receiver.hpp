@@ -112,6 +112,11 @@ class Receiver
         }
     }
 
+    void close()
+    {
+        chan->closed = true;
+    }
+
     AwaitableReceive< T > receive()
     {
         return AwaitableReceive( chan );
@@ -125,7 +130,7 @@ class Receiver
     }
 
     template< class U >
-    friend std::tuple< Sender< U >, Receiver< U > > makeChannel( std::size_t capacity );
+    friend std::tuple< Sender< U >, Receiver< U > > makeChannel( std::size_t capacity, const ScheduleFunc& );
 
     channel< T >* chan;
 };

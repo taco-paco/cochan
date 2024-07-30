@@ -2,60 +2,16 @@
 // Created by Edwin Paco on 7/24/24.
 //
 #include <iostream>
+#include <vector>
 #include <thread>
+
+#include "dummy_coro.hpp"
 
 #include <co_chan/channel.hpp>
 #include <co_chan/receiver.hpp>
 #include <co_chan/sender.hpp>
 
-struct promise_type;
-
-struct MyCoroutine: std::coroutine_handle< promise_type >
-{
-    using promise_type = ::promise_type;
-
-    MyCoroutine( std::coroutine_handle< promise_type > h )
-        : handle( h )
-    {
-    }
-
-    ~MyCoroutine()
-    {
-        if( handle && !handle.done() )
-        {
-            int a = 1;
-        }
-    }
-
-    std::coroutine_handle< promise_type > handle;
-};
-
-struct promise_type
-{
-    MyCoroutine get_return_object()
-    {
-        return MyCoroutine{ std::coroutine_handle< promise_type >::from_promise( *this ) };
-    }
-
-    std::suspend_never initial_suspend()
-    {
-        return {};
-    }
-
-    std::suspend_never final_suspend() noexcept
-    {
-        return {};
-    }
-
-    void unhandled_exception()
-    {
-        std::terminate();
-    }
-
-    void return_void()
-    {
-    }
-};
+constexpr uint32_t NUM_SEND_ITEMS = 10;
 
 MyCoroutine send( std::vector< AwaitableSend< int > > senderPermits )
 {
@@ -88,6 +44,17 @@ void receive( Receiver< T > receiver )
 }
 
 void drop( Sender< int > s )
+{
+}
+
+// tests:
+// opposite to this
+// generate buch of sAwaitable & rAwaitables and drop sender and receiver
+// Multithreaded send
+// Multithreaded receive
+// Multithreaded both
+
+std::vector< AwaitableSend< int > > generatePermits()
 {
 }
 

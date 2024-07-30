@@ -149,7 +149,7 @@ class Sender
     }
 
     template< class U >
-    friend std::tuple< Sender< U >, Receiver< U > > makeChannel( std::size_t capacity );
+    friend std::tuple< Sender< U >, Receiver< U > > makeChannel( std::size_t capacity, const ScheduleFunc& );
 
     channel< T >* chan;
 };
