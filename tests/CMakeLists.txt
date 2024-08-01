@@ -15,16 +15,10 @@ if (NOT GTest_FOUND)
     FetchContent_MakeAvailable(googletest)
 endif ()
 
-add_executable(playground playground.cpp)
-set_property(TARGET playground PROPERTY CXX_STANDARD 20)
 
-add_executable(test sender_receiver_test.cpp dummy_coro.hpp)
-target_link_libraries(test PUBLIC GTest::gtest GTest::gtest_main cochan)
-set_property(TARGET test PROPERTY CXX_STANDARD 20)
-
-add_executable(sender_drop sender_drop.cpp dummy_coro.hpp)
-target_link_libraries(sender_drop PUBLIC cochan)
-set_property(TARGET sender_drop PROPERTY CXX_STANDARD 20)
+add_executable(sender_receiver_test sender_receiver_test.cpp dummy_coro.hpp)
+target_link_libraries(sender_receiver_test PUBLIC GTest::gtest GTest::gtest_main cochan)
+set_property(TARGET sender_receiver_test PROPERTY CXX_STANDARD 20)
 
 if (WITH_LIBCORO)
     add_subdirectory(libcoro)

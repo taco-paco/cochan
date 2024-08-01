@@ -3,8 +3,14 @@
 
 enable_testing()
 
-add_executable(test_with_libcoro sender_receiver_test.cpp)
-target_include_directories(test_with_libcoro PRIVATE /Users/edwinpaco/Documents/projects/cpp/libcoro/install/include)
-target_link_libraries(test_with_libcoro PUBLIC GTest::gtest GTest::gtest_main cochan /Users/edwinpaco/Documents/projects/cpp/libcoro/install/lib/libcoro.a)
+add_executable(sender_receiver_libcoro_test sender_receiver_test.cpp)
+target_include_directories(sender_receiver_libcoro_test PRIVATE /Users/edwinpaco/Documents/projects/cpp/libcoro/install/include)
+target_link_libraries(sender_receiver_libcoro_test PUBLIC GTest::gtest GTest::gtest_main cochan /Users/edwinpaco/Documents/projects/cpp/libcoro/install/lib/libcoro.a)
 
-set_property(TARGET test_with_libcoro PROPERTY CXX_STANDARD 20)
+set_property(TARGET sender_receiver_libcoro_test PROPERTY CXX_STANDARD 20)
+
+add_executable(awaitables_libcoro_test awaitables_test.cpp)
+target_include_directories(awaitables_libcoro_test PRIVATE /Users/edwinpaco/Documents/projects/cpp/libcoro/install/include)
+target_link_libraries(awaitables_libcoro_test PUBLIC GTest::gtest GTest::gtest_main cochan /Users/edwinpaco/Documents/projects/cpp/libcoro/install/lib/libcoro.a)
+
+set_property(TARGET awaitables_libcoro_test PROPERTY CXX_STANDARD 20)

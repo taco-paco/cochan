@@ -72,12 +72,12 @@ std::vector< coro::task< void > > createTasks(
     return std::move( tasks );
 }
 
-class ChannelTest: public ::testing::Test
+class SenderReceiverLibcoroTest: public ::testing::Test
 {
   protected:
     coro::thread_pool tp;
 
-    ChannelTest()
+    SenderReceiverLibcoroTest()
         : tp( coro::thread_pool::options{
               .thread_count = 4,
           } )
@@ -90,7 +90,7 @@ class ChannelTest: public ::testing::Test
     }
 };
 
-TEST_F( ChannelTest, OneToOne )
+TEST_F( SenderReceiverLibcoroTest, OneToOne )
 {
     auto scheduleFunc = [ this ]( std::coroutine_handle<> handle ) {
         auto scheduleAwaitable = tp.schedule();
@@ -106,7 +106,7 @@ TEST_F( ChannelTest, OneToOne )
     ASSERT_EQ( receiveCounter, NUM_SEND_ITEMS ) << "Wrong counter, expected 1000";
 }
 
-TEST_F( ChannelTest, TwoToOne )
+TEST_F( SenderReceiverLibcoroTest, TwoToOne )
 {
     auto scheduleFunc = [ this ]( std::coroutine_handle<> handle ) {
         auto scheduleAwaitable = tp.schedule();
@@ -122,7 +122,7 @@ TEST_F( ChannelTest, TwoToOne )
     ASSERT_EQ( receiveCounter, 2 * NUM_SEND_ITEMS ) << "Wrong counter, expected 2000";
 }
 
-TEST_F( ChannelTest, TwoToTwo )
+TEST_F( SenderReceiverLibcoroTest, TwoToTwo )
 {
     auto scheduleFunc = [ this ]( std::coroutine_handle<> handle ) {
         auto scheduleAwaitable = tp.schedule();
@@ -138,7 +138,7 @@ TEST_F( ChannelTest, TwoToTwo )
     ASSERT_EQ( receiveCounter, 2 * NUM_SEND_ITEMS ) << "Wrong counter, expected 2000";
 }
 
-TEST_F( ChannelTest, ManyToMany )
+TEST_F( SenderReceiverLibcoroTest, ManyToMany )
 {
     int senders = 20;
     int receivers = 31;

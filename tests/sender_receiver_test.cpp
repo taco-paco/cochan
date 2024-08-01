@@ -8,9 +8,7 @@
 #include <gtest/gtest.h>
 
 #include "dummy_coro.hpp"
-#include <cochan/channel.hpp>
-#include <cochan/sender.hpp>
-#include <cochan/receiver.hpp>
+#include <cochan/cochan.hpp>
 
 using namespace cochan;
 
@@ -47,7 +45,7 @@ void drop( T t )
 {
 }
 
-class ChannelTest: public ::testing::Test
+class SenderReceiverLibcoroTest: public ::testing::Test
 {
   protected:
     void SetUp() override
@@ -58,7 +56,7 @@ class ChannelTest: public ::testing::Test
     uint receiveCounter = 0;
 };
 
-TEST_F( ChannelTest, SingleThreadSendReceive )
+TEST_F( SenderReceiverLibcoroTest, SingleThreadSendReceive )
 {
     auto [ s, r ] = makeChannel< int >( 3 );
 
@@ -72,7 +70,7 @@ TEST_F( ChannelTest, SingleThreadSendReceive )
     ASSERT_EQ( receiveCounter, NUM_SEND_ITEMS );
 }
 
-TEST_F( ChannelTest, SingleThreadReceiveSend )
+TEST_F( SenderReceiverLibcoroTest, SingleThreadReceiveSend )
 {
     auto [ s, r ] = makeChannel< int >( 3 );
 
@@ -104,7 +102,7 @@ void syncSend( Sender< int > s )
     }
 }
 
-TEST_F( ChannelTest, MultiThreadSendReceive )
+TEST_F( SenderReceiverLibcoroTest, MultiThreadSendReceive )
 {
     const ScheduleFunc dumbSchedule = []( std::coroutine_handle<> handle ) {
         std::thread t( [ handle ]() {
