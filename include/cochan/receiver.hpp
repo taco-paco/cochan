@@ -18,7 +18,7 @@ class AwaitableReceive
   public:
     AwaitableReceive() = delete;
     AwaitableReceive( AwaitableReceive&& other ) noexcept
-        : result( std::move( other.value ) )
+        : result( std::move( other.result ) )
         , chan( other.chan )
     {
         other.chan = nullptr;

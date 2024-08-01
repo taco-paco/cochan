@@ -53,10 +53,14 @@ coro::task< void > triggerReceive( coro::thread_pool& tp, std::vector< cochan::A
     co_await tp.schedule();
     for( cochan::AwaitableReceive< int >& el : receiveAwaitables )
     {
-        co_await el;
+        auto val = co_await el;
+        if( !val )
+        {
+            std::cout << "asd" << std::endl;
+        }
     }
 
-    drop( std::move( sendAwaitables ) );
+    drop( std::move( receiveAwaitables ) );
 }
 
 coro::task< int > receive( coro::thread_pool& tp, cochan::Receiver< int > receiver )
@@ -170,6 +174,41 @@ TEST_F( AwaitableLibcoroTest, SendAwaitableAndSenderMultipleReceivers )
 
     int received = coro::sync_wait( task() );
     ASSERT_EQ( received, NUM_OF_SENDS1 + NUM_OF_SENDS2 );
+}
+
+TEST_F( AwaitableLibcoroTest, SenderAndReceivebles )
+{
+    constexpr uint NUM_OF_RECEIVES1 = 1030;
+    constexpr uint NUM_OF_RECEIVES2 = 300;
+    auto task = [ & ]() -> coro::task< void > {
+        auto [ sender, receiver ] = cochan::makeChannel< int >( 21 );
+        auto sendTask = send( tp, std::move( sender ), NUM_OF_RECEIVES1 + NUM_OF_RECEIVES2 );
+
+        std::vector< cochan::AwaitableReceive< int > > receivables1, receivables2;
+        receivables1.reserve( NUM_OF_RECEIVES1 );
+        receivables2.reserve( NUM_OF_RECEIVES2 );
+
+        for( int i = 0; i < NUM_OF_RECEIVES1; i++ )
+        {
+            receivables1.emplace_back( receiver.receive() );
+        }
+        for( int i = 0; i < NUM_OF_RECEIVES2; i++ )
+        {
+            receivables2.emplace_back( receiver.receive() );
+        }
+        // Add one for fun
+        receivables1.emplace_back( receiver.receive() );
+        receivables2.emplace_back( receiver.receive() );
+
+        drop( std::move( receiver ) );
+
+        auto receive1 = triggerReceive( tp, std::move( receivables1 ) );
+        auto receive2 = triggerReceive( tp, std::move( receivables2 ) );
+
+        co_await coro::when_all( std::move( sendTask ), std::move( receive1 ), std::move( receive2 ) );
+    };
+
+    coro::sync_wait( task() );
 }
 
 int main( int argc, char** argv )
