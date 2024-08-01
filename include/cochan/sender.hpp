@@ -4,7 +4,10 @@
 #include <coroutine>
 #include <exception>
 
-#include <co_chan/channel.hpp>
+#include <cochan/channel.hpp>
+
+namespace cochan
+{
 
 template< class T >
 class Sender;
@@ -28,19 +31,27 @@ class AwaitableSend
             return;
         }
 
-        // The desctruction of all meands permits == 0, and empty senderWaiters
-        // Would be the case if it ouldn't be 0
-        if( --chan->awaitableSenders == 0 && chan->senders == 0 )
+        std::unique_lock< std::mutex > guard( chan->mutex );
+        if( --chan->awaitableSenders != 0 || chan->senders != 0 )
         {
-            if( chan->receivers == 0 && chan->awaitableReceivers == 0 )
-            {
-                delete chan;
-                return;
-            }
-
-            chan->onSenderClose();
             return;
         }
+
+        if( chan->receivers == 0 && chan->awaitableReceivers == 0 )
+        {
+            delete chan;
+            return;
+        }
+
+        const auto waitersCopy = chan->collectReceiveWaiters();
+        chan->closed = true;
+        guard.unlock();
+
+        std::for_each( waitersCopy.begin(), waitersCopy.end(), [ this ]( const auto& el ) {
+            const auto [ result, receiverHandle ] = el;
+            *result = std::nullopt;
+            chan->scheduleFunc( receiverHandle );
+        } );
     }
 
     AwaitableSend& operator=( const AwaitableSend& ) = delete;
@@ -61,14 +72,14 @@ class AwaitableSend
     }
 
   private:
-    AwaitableSend( const T& theValue, channel< T >* theChan )
+    AwaitableSend( const T& theValue, Channel< T >* theChan )
         : value( theValue )
         , chan( theChan )
     {
         chan->awaitableSenders++;
     }
 
-    AwaitableSend( T&& theValue, channel< T >* theChan )
+    AwaitableSend( T&& theValue, Channel< T >* theChan )
         : value( std::move( theValue ) )
         , chan( theChan )
     {
@@ -78,7 +89,7 @@ class AwaitableSend
     friend Sender< T >;
 
     T value;
-    channel< T >* chan;
+    Channel< T >* chan;
 };
 
 template< class T >
@@ -106,19 +117,27 @@ class Sender
             return;
         }
 
-        // TODO: Check if  chan->senders == 0 is atomic in relation to awaitableSenders == 0
-        // Or if it can cause problems
-        if( --chan->senders == 0 && chan->awaitableSenders == 0 )
+        std::unique_lock< std::mutex > guard( chan->mutex );
+        if( --chan->senders != 0 || chan->awaitableSenders != 0 )
         {
-            if( chan->receivers == 0 && chan->awaitableReceivers == 0 )
-            {
-                delete chan;
-                return;
-            }
-
-            chan->onSenderClose();
             return;
         }
+
+        if( chan->receivers == 0 && chan->awaitableReceivers == 0 )
+        {
+            delete chan;
+            return;
+        }
+
+        const auto waitersCopy = chan->collectReceiveWaiters();
+        chan->closed = true;
+        guard.unlock();
+
+        std::for_each( waitersCopy.begin(), waitersCopy.end(), [ this ]( const auto& el ) {
+            const auto [ result, receiverHandle ] = el;
+            *result = std::nullopt;
+            chan->scheduleFunc( receiverHandle );
+        } );
     }
 
     AwaitableSend< T > send( const T& value )
@@ -133,7 +152,7 @@ class Sender
 
     AwaitableSend< T > send( T&& value )
     {
-        if( chan->closed )
+        if( isClosed() )
         {
             throw ChannelClosedException{};
         }
@@ -141,8 +160,18 @@ class Sender
         return AwaitableSend{ value, chan };
     }
 
+    [[nodiscard]] std::size_t getCapacity() const
+    {
+        return chan->getCapacity();
+    }
+
+    bool isClosed() const
+    {
+        return chan->isClosed();
+    }
+
   private:
-    Sender( channel< T >* theChan )
+    Sender( Channel< T >* theChan )
         : chan( theChan )
     {
         chan->senders++;
@@ -151,5 +180,10 @@ class Sender
     template< class U >
     friend std::tuple< Sender< U >, Receiver< U > > makeChannel( std::size_t capacity, const ScheduleFunc& );
 
-    channel< T >* chan;
+    Channel< T >* chan;
 };
+
+} // namespace cochan
+
+// After closed receiver no sender shall be postponed
+// assume handleSend called twice

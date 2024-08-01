@@ -26,17 +26,6 @@ struct MyCoroutine
         }
     }
 
-    bool resume() const
-    {
-        if( !handle || handle.done() )
-        {
-            return false;
-        }
-
-        handle.resume();
-        return !handle.done();
-    }
-
     std::coroutine_handle< promise_type > handle;
 };
 

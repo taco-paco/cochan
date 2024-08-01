@@ -4,7 +4,10 @@
 #include <coroutine>
 #include <memory>
 
-#include <co_chan/channel.hpp>
+#include <cochan/channel.hpp>
+
+namespace cochan
+{
 
 template< class T >
 class Receiver;
@@ -30,17 +33,26 @@ class AwaitableReceive
             return;
         }
 
-        if( --chan->awaitableReceivers == 0 && chan->receivers == 0 )
+        std::unique_lock< std::mutex > guard( chan->mutex );
+        if( --chan->awaitableReceivers != 0 || chan->receivers != 0 )
         {
-            if( chan->senders == 0 && chan->awaitableSenders == 0 )
-            {
-                delete chan;
-                return;
-            }
-
-            chan->onReceiverClose();
             return;
         }
+
+        if( chan->senders == 0 && chan->awaitableSenders == 0 )
+        {
+            delete chan;
+            return;
+        }
+
+        const auto waitersCopy = chan->collectSendWaiters();
+        chan->closed = true;
+        guard.unlock();
+
+        std::for_each( waitersCopy.begin(), waitersCopy.end(), [ this ]( const auto& el ) {
+            const auto [ val_ptr, handle ] = el;
+            chan->scheduleFunc( handle );
+        } );
     }
 
     AwaitableReceive& operator=( const AwaitableReceive& ) = delete;
@@ -62,7 +74,7 @@ class AwaitableReceive
     }
 
   private:
-    explicit AwaitableReceive( channel< T >* theChan )
+    explicit AwaitableReceive( Channel< T >* theChan )
         : chan( theChan )
     {
         chan->awaitableReceivers++;
@@ -70,7 +82,7 @@ class AwaitableReceive
 
     friend Receiver< T >;
 
-    channel< T >* chan;
+    Channel< T >* chan;
     std::optional< T > result;
 };
 
@@ -99,17 +111,26 @@ class Receiver
             return;
         }
 
-        if( --chan->receivers == 0 && chan->awaitableReceivers == 0 )
+        std::unique_lock< std::mutex > guard( chan->mutex );
+        if( --chan->receivers != 0 || chan->awaitableReceivers != 0 )
         {
-            if( chan->senders == 0 && chan->awaitableSenders == 0 )
-            {
-                delete chan;
-                return;
-            }
-
-            chan->onReceiverClose();
             return;
         }
+
+        if( chan->senders == 0 && chan->awaitableSenders == 0 )
+        {
+            delete chan;
+            return;
+        }
+
+        const auto waitersCopy = chan->collectSendWaiters();
+        chan->closed = true;
+        guard.unlock();
+
+        std::for_each( waitersCopy.begin(), waitersCopy.end(), [ this ]( const auto& el ) {
+            const auto [ val_ptr, handle ] = el;
+            chan->scheduleFunc( handle );
+        } );
     }
 
     void close()
@@ -123,7 +144,7 @@ class Receiver
     }
 
   private:
-    explicit Receiver( channel< T >* theChan )
+    explicit Receiver( Channel< T >* theChan )
         : chan( theChan )
     {
         chan->receivers++;
@@ -132,5 +153,19 @@ class Receiver
     template< class U >
     friend std::tuple< Sender< U >, Receiver< U > > makeChannel( std::size_t capacity, const ScheduleFunc& );
 
-    channel< T >* chan;
+    Channel< T >* chan;
 };
+
+}; // namespace cochan
+
+// 1. if( --chan->awaitableReceivers != 0 || chan->receivers != 0 )
+//{
+//     return;
+// }
+//
+// 2. if( chan->awaitableReceivers != 0 || --chan->receivers != 0 )
+//{
+//     return;
+// }
+
+// first 2, if chan->awaitableReceivers != 0 - true. Ok.

@@ -10,8 +10,10 @@
 #include <coroutine>
 #include <utility>
 
-#include <co_chan/utils.hpp>
+#include <cochan/utils.hpp>
 
+namespace cochan
+{
 class ChannelClosedException: public std::exception
 {
   public:
@@ -34,13 +36,13 @@ class Receiver;
 
 // TODO: case for copy_constructible only
 template< std::movable T >
-class channel
+class Channel
 {
   public:
-    ~channel()
+    ~Channel()
     {
-        ASSERT( receiverWaiters.empty(), "Should be handled by last sendable object" );
-        ASSERT( senderWaiters.empty(), "Should be handled ny last receivable object" );
+        COCHAN_ASSERT( receiverWaiters.empty(), "Should be handled by last sendable object" );
+        COCHAN_ASSERT( senderWaiters.empty(), "Should be handled ny last receivable object" );
     }
 
     std::size_t getSize() const
@@ -51,52 +53,40 @@ class channel
 
     std::size_t getCapacity() const
     {
-        // TODO: check if safe without mutex
         return capacity;
     }
 
-    void onSenderClose()
+    bool isClosed() const
     {
-        closed = true;
-
-        std::unique_lock< std::mutex > guard( mutex );
-        if( receiverWaiters.empty() )
-        {
-            return;
-        }
-
-        ASSERT( sendQueue.empty() && senderWaiters.empty(), "Bug or wrong assumption of that being impossible" );
-        const auto waitersCopy = receiverWaiters;
-        receiverWaiters.clear();
-        guard.unlock(); // Prevent double-lock
-
-        std::for_each( waitersCopy.begin(), waitersCopy.end(), [ this ]( const auto& el ) {
-            const auto [ result, receiverHandle ] = el;
-            *result = std::nullopt;
-            this->scheduleFunc( receiverHandle );
-        } );
+        return closed;
     }
 
-    void onReceiverClose()
+    std::list< std::pair< std::optional< T >*, std::coroutine_handle<> > > collectReceiveWaiters()
     {
-        closed = true;
-
-        std::unique_lock< std::mutex > guard( mutex );
-        if( senderWaiters.empty() )
+        if( receiverWaiters.empty() )
         {
-            return;
+            return {};
         }
 
-        ASSERT( sendQueue.size() == capacity && receiverWaiters.empty(), "" )
+        COCHAN_ASSERT( sendQueue.empty() && senderWaiters.empty(), "Bug or wrong assumption of that being impossible" );
+        const auto waitersCopy = receiverWaiters;
+        receiverWaiters.clear();
 
+        return waitersCopy;
+    }
+
+    std::list< std::pair< T*, std::coroutine_handle<> > > collectSendWaiters()
+    {
+        if( senderWaiters.empty() )
+        {
+            return {};
+        }
+
+        COCHAN_ASSERT( sendQueue.size() == capacity && receiverWaiters.empty(), "" )
         const auto waitersCopy = senderWaiters;
         senderWaiters.clear();
-        guard.unlock();
 
-        std::for_each( waitersCopy.begin(), waitersCopy.end(), [ this ]( const auto& el ) {
-            const auto [ val_ptr, handle ] = el;
-            this->scheduleFunc( handle );
-        } );
+        return waitersCopy;
     }
 
     bool handleSend( std::pair< T*, std::coroutine_handle<> > value )
@@ -104,7 +94,7 @@ class channel
         std::unique_lock< std::mutex > guard( mutex );
         const auto currentSize = sendQueue.size();
 
-        ASSERT( currentSize <= capacity, "Queue got larger than capacity. bug" );
+        COCHAN_ASSERT( currentSize <= capacity, "Queue got larger than capacity. bug" );
         if( sendQueue.size() == capacity )
         {
             if( receivers == 0 && awaitableReceivers == 0 )
@@ -119,7 +109,7 @@ class channel
         // If not empty there are no receivers so just handleSend
         if( !sendQueue.empty() )
         {
-            ASSERT( receiverWaiters.empty(), "Bug or wrong assumption of that being impossible" );
+            COCHAN_ASSERT( receiverWaiters.empty(), "Bug or wrong assumption of that being impossible" );
             sendQueue.emplace( std::move( *value.first ) );
             return false;
         }
@@ -159,7 +149,7 @@ class channel
             return true;
         }
 
-        ASSERT( receiverWaiters.empty(), "If element's in queue receiverWaiters shall be empty" )
+        COCHAN_ASSERT( receiverWaiters.empty(), "If element's in queue receiverWaiters shall be empty" )
 
         const T value = std::move( sendQueue.front() );
         sendQueue.pop();
@@ -181,25 +171,30 @@ class channel
         return false;
     }
 
-    std::atomic_bool closed = false;
-
-    std::atomic_uint32_t senders = 0;
-    std::atomic_uint32_t receivers = 0;
-    std::atomic_uint32_t awaitableSenders = 0;
-    std::atomic_uint32_t awaitableReceivers = 0;
-
   private:
-    explicit channel( std::size_t theCapacity, const ScheduleFunc& theScheduleFunc )
+    explicit Channel( std::size_t theCapacity, const ScheduleFunc& theScheduleFunc )
         : capacity( theCapacity )
         , scheduleFunc( theScheduleFunc )
     {
-        ASSERT_FORMAT( theCapacity != 0, "Channel capacity must be greater than 0" );
+        COCHAN_ASSERT_FORMAT( theCapacity != 0, "Channel capacity must be greater than 0" );
     }
 
-    channel( const channel& ) = delete;
-    channel( channel&& ) = delete;
+    Channel( const Channel& ) = delete;
+    Channel( Channel&& ) = delete;
 
     mutable std::mutex mutex;
+
+    template< typename U >
+    friend class Sender;
+
+    template< class U >
+    friend class AwaitableSend;
+
+    template< typename U >
+    friend class Receiver;
+
+    template< class U >
+    friend class AwaitableReceive;
 
     template< class U >
     friend std::tuple< Sender< U >, Receiver< U > > makeChannel( std::size_t capacity, const ScheduleFunc& );
@@ -208,7 +203,14 @@ class channel
 
     std::size_t capacity;
     std::queue< T > sendQueue; // TODO: change queue type + circular buffer
+    std::atomic_bool closed = false;
 
+    std::atomic_uint32_t senders = 0;
+    std::atomic_uint32_t receivers = 0;
+    std::atomic_uint32_t awaitableSenders = 0;
+    std::atomic_uint32_t awaitableReceivers = 0;
+
+    // TODO: rename parkedSender
     std::list< std::pair< T*, std::coroutine_handle<> > > senderWaiters;
     std::list< std::pair< std::optional< T >*, std::coroutine_handle<> > > receiverWaiters;
 };
@@ -216,6 +218,8 @@ class channel
 template< class T >
 std::tuple< Sender< T >, Receiver< T > > makeChannel( std::size_t capacity = 1, const ScheduleFunc& schedule = dummyScheduleFunc )
 {
-    auto chan = new channel< T >( capacity, dummyScheduleFunc );
+    auto chan = new Channel< T >( capacity, dummyScheduleFunc );
     return { Sender{ chan }, Receiver{ chan } };
 }
+
+} // namespace cochan

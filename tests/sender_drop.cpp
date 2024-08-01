@@ -7,9 +7,11 @@
 
 #include "dummy_coro.hpp"
 
-#include <co_chan/channel.hpp>
-#include <co_chan/receiver.hpp>
-#include <co_chan/sender.hpp>
+#include <cochan/channel.hpp>
+#include <cochan/receiver.hpp>
+#include <cochan/sender.hpp>
+
+using namespace cochan;
 
 constexpr uint32_t NUM_SEND_ITEMS = 10;
 
