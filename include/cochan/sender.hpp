@@ -157,7 +157,7 @@ class Sender
             throw ChannelClosedException{};
         }
 
-        return AwaitableSend{ value, chan };
+        return AwaitableSend{ std::forward< T >( value ), chan };
     }
 
     [[nodiscard]] std::size_t getCapacity() const

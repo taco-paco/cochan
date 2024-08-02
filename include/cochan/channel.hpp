@@ -151,7 +151,7 @@ class Channel
 
         COCHAN_ASSERT( receiverWaiters.empty(), "If element's in queue receiverWaiters shall be empty" )
 
-        const T value = std::move( sendQueue.front() );
+        T value = std::move( sendQueue.front() );
         sendQueue.pop();
 
         // Was full and have sender waiters

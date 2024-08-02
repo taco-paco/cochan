@@ -157,6 +157,89 @@ TEST_F( SenderReceiverLibcoroTest, ManyToMany )
     ASSERT_EQ( receiveCounter, senders * NUM_SEND_ITEMS ) << "Wrong counter, expected 20000";
 }
 
+TEST_F( SenderReceiverLibcoroTest, ComplexType )
+{
+    struct message
+    {
+        message( uint32_t i, std::string t )
+            : id( i )
+            , text( std::move( t ) )
+        {
+        }
+        message( const message& ) = delete;
+        message( message&& other )
+            : id( other.id )
+            , text( std::move( other.text ) )
+        {
+        }
+        auto operator=( const message& ) -> message& = delete;
+        auto operator=( message&& other ) -> message&
+        {
+            if( std::addressof( other ) != this )
+            {
+                this->id = std::exchange( other.id, 0 );
+                this->text = std::move( other.text );
+            }
+
+            return *this;
+        }
+
+        ~message()
+        {
+            id = 0;
+        }
+
+        uint32_t id;
+        std::string text;
+    };
+
+    auto scheduleFunc = [ this ]( std::coroutine_handle<> handle ) {
+        auto scheduleAwaitable = tp.schedule();
+        scheduleAwaitable.await_suspend( handle );
+    };
+
+    constexpr uint NUM_OF_SENDS = 257;
+    auto send = [ & ]( Sender< message > sender ) -> coro::task< void > {
+        for( uint32_t i = 0; i < NUM_OF_SENDS; i++ )
+        {
+            auto msg = message{ i, "hello there" };
+            co_await sender.send( std::move( msg ) );
+        }
+
+        drop( std::move( sender ) );
+    };
+
+    auto receive = [ & ]( Receiver< message > receiver ) -> coro::task< uint > {
+        uint counter = 0;
+        while( true )
+        {
+            auto val = co_await receiver.receive();
+            if( !val )
+            {
+                break;
+            }
+
+            counter++;
+        }
+
+        drop( std::move( receiver ) );
+        co_return counter;
+    };
+
+    auto task = [ & ]() -> coro::task< uint > {
+        auto [ sender, receiver ] = makeChannel< message >( 10 );
+
+        auto sendTask = send( std::move( sender ) );
+        auto receiveTask = receive( std::move( receiver ) );
+        auto [ _, counter ] = co_await coro::when_all( std::move( sendTask ), std::move( receiveTask ) );
+
+        co_return counter.return_value();
+    };
+
+    uint counter = coro::sync_wait( task() );
+    ASSERT_EQ( counter, NUM_OF_SENDS );
+}
+
 int main( int argc, char** argv )
 {
     ::testing::InitGoogleTest( &argc, argv );

@@ -70,7 +70,7 @@ class AwaitableReceive
 
     std::optional< T > await_resume()
     {
-        return result;
+        return std::move( result );
     }
 
   private:
