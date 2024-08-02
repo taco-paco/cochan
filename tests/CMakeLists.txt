@@ -1,4 +1,4 @@
-option(WITH_LIBCORO "Tests with libcoro" ON)
+option(WITH_LIBCORO "Tests with libcoro" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,7 +17,7 @@ endif ()
 
 
 add_executable(sender_receiver_test sender_receiver_test.cpp dummy_coro.hpp)
-target_link_libraries(sender_receiver_test PUBLIC GTest::gtest GTest::gtest_main cochan)
+target_link_libraries(sender_receiver_test PRIVATE GTest::gtest GTest::gtest_main cochan)
 set_property(TARGET sender_receiver_test PROPERTY CXX_STANDARD 20)
 
 if (WITH_LIBCORO)

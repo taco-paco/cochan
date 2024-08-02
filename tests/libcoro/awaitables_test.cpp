@@ -146,8 +146,8 @@ TEST_F( AwaitableLibcoroTest, MultipleSendAwaitableReceiveReceiver )
         auto sendTask2 = triggerSend( tp, std::move( sendAwaitables2 ) );
         auto receiverTask = receive( tp, std::move( receiver ) );
 
-        auto [ _, _, received ] = co_await coro::when_all( std::move( sendTask1 ), std::move( sendTask2 ), std::move( receiverTask ) );
-        co_return received.return_value();
+        auto res = co_await coro::when_all( std::move( sendTask1 ), std::move( sendTask2 ), std::move( receiverTask ) );
+        co_return std::get< 2 >( res ).return_value();
     };
 
     int received = coro::sync_wait( task() );
@@ -181,10 +181,10 @@ TEST_F( AwaitableLibcoroTest, SendAwaitableAndSenderMultipleReceivers )
         auto receiverTask3 = receive( tp, receiver );
         drop( std::move( receiver ) );
 
-        auto [ _, _, received1, received2, received3 ] = co_await coro::when_all( std::move( sendTask1 ), std::move( sendTask2 ),
-            std::move( receiverTask1 ), std::move( receiverTask2 ), std::move( receiverTask3 ) );
+        auto result = co_await coro::when_all( std::move( sendTask1 ), std::move( sendTask2 ), std::move( receiverTask1 ),
+            std::move( receiverTask2 ), std::move( receiverTask3 ) );
 
-        co_return received1.return_value() + received2.return_value() + received3.return_value();
+        co_return std::get< 2 >( result ).return_value() + std::get< 3 >( result ).return_value() + std::get< 4 >( result ).return_value();
     };
 
     int received = coro::sync_wait( task() );
