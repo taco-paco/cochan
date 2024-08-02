@@ -1,21 +1,31 @@
 cmake_minimum_required(VERSION 3.5)
-project(co-chan VERSION 0.2.0 LANGUAGES CXX)
+project(co-chan VERSION 0.0.1 LANGUAGES CXX)
 
-add_library(co_chan
-        include/co_chan/channel.hpp
-        include/co_chan/sender.hpp
-        include/co_chan/receiver.hpp
-        include/co_chan/utils.hpp
+option(ENABLE_TESTS "Enable tests" OFF)
 
-        src/channel.cpp
-        src/sender.cpp
-        src/receiver.cpp
+add_library(cochan INTERFACE)
+target_include_directories(cochan
+        INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+set_property(TARGET cochan PROPERTY CXX_STANDARD 20)
+
+include(GNUInstallDirs)
+install(TARGETS cochan
+        EXPORT cochan_targets
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+install(EXPORT cochan_targets
+        FILE cochan-targets.cmake
+        NAMESPACE cochan::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cochan
+)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        FILES_MATCHING PATTERN "*.hpp"
 )
 
-target_include_directories(co_chan PUBLIC include/)
-
-# TODO: remove?
-set_property(TARGET co_chan PROPERTY CXX_STANDARD 20)
-
-# TODO: add standart req?
-add_subdirectory(tests)
+if (ENABLE_TESTS)
+    add_subdirectory(tests)
+endif ()

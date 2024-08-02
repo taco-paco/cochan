@@ -1,6 +1,11 @@
 # IDE related
 .idea
+
+# cmake
 cmake-build-debug
+cmake-build-debug-llvm18
+build
+install
 
 # macOS
 .DS_Store
