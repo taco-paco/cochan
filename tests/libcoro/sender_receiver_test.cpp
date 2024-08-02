@@ -213,7 +213,7 @@ TEST_F( SenderReceiverLibcoroTest, ComplexType )
         uint counter = 0;
         while( true )
         {
-            auto val = co_await receiver.receive();
+            std::optional< message > val = co_await receiver.receive();
             if( !val )
             {
                 break;

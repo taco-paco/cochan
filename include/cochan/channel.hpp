@@ -24,7 +24,7 @@ class ChannelClosedException: public std::exception
 };
 
 using ScheduleFunc = std::function< void( std::coroutine_handle<> ) >;
-const ScheduleFunc dummyScheduleFunc = []( std::coroutine_handle<> handle ) {
+const ScheduleFunc defaultScheduleFunc = []( std::coroutine_handle<> handle ) {
     handle.resume();
 };
 
@@ -216,9 +216,9 @@ class Channel
 };
 
 template< class T >
-std::tuple< Sender< T >, Receiver< T > > makeChannel( std::size_t capacity = 1, const ScheduleFunc& schedule = dummyScheduleFunc )
+std::tuple< Sender< T >, Receiver< T > > makeChannel( std::size_t capacity = 1, const ScheduleFunc& schedule = defaultScheduleFunc )
 {
-    auto chan = new Channel< T >( capacity, dummyScheduleFunc );
+    auto chan = new Channel< T >( capacity, defaultScheduleFunc );
     return { Sender{ chan }, Receiver{ chan } };
 }
 
