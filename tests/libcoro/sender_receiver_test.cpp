@@ -130,7 +130,7 @@ TEST_F( SenderReceiverLibcoroTest, TwoToTwo )
     };
 
     auto twoToTwo = [ this, &scheduleFunc ]() -> coro::task< void > {
-        auto [ sender, receiver ] = makeChannel< int >( 10 );
+        auto [ sender, receiver ] = makeChannel< int >( 10, scheduleFunc );
         co_await coro::when_all( createTasks( tp, std::move( sender ), std::move( receiver ), 2, 1 ) );
     };
 
@@ -149,7 +149,7 @@ TEST_F( SenderReceiverLibcoroTest, ManyToMany )
     };
 
     auto manyToMany = [ this, &scheduleFunc, senders, receivers ]() -> coro::task< void > {
-        auto [ sender, receiver ] = makeChannel< int >( 10 );
+        auto [ sender, receiver ] = makeChannel< int >( 10, scheduleFunc );
         co_await coro::when_all( createTasks( tp, std::move( sender ), std::move( receiver ), senders, receivers ) );
     };
 
@@ -227,7 +227,7 @@ TEST_F( SenderReceiverLibcoroTest, ComplexType )
     };
 
     auto task = [ & ]() -> coro::task< uint > {
-        auto [ sender, receiver ] = makeChannel< message >( 10 );
+        auto [ sender, receiver ] = makeChannel< message >( 2, scheduleFunc );
 
         auto sendTask = send( std::move( sender ) );
         auto receiveTask = receive( std::move( receiver ) );

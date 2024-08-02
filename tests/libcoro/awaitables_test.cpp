@@ -56,7 +56,7 @@ coro::task< void > triggerReceive( coro::thread_pool& tp, std::vector< cochan::A
         auto val = co_await el;
         if( !val )
         {
-            std::cout << "asd" << std::endl;
+            break;
         }
     }
 
@@ -86,8 +86,13 @@ coro::task< int > receive( coro::thread_pool& tp, cochan::Receiver< int > receiv
 TEST_F( AwaitableLibcoroTest, SingleSendAwaitableReceiveReceiver )
 {
     constexpr uint NUM_OF_SENDS = 401;
+    auto scheduleFunc = [ this ]( std::coroutine_handle<> handle ) {
+        auto scheduleAwaitable = tp.schedule();
+        scheduleAwaitable.await_suspend( handle );
+    };
+
     auto task = [ & ]() -> coro::task< int > {
-        auto [ sender, receiver ] = cochan::makeChannel< int >( 21 );
+        auto [ sender, receiver ] = cochan::makeChannel< int >( 21, scheduleFunc );
 
         std::vector< cochan::AwaitableSend< int > > sendAwaitables;
         sendAwaitables.reserve( NUM_OF_SENDS );
@@ -113,8 +118,13 @@ TEST_F( AwaitableLibcoroTest, MultipleSendAwaitableReceiveReceiver )
 {
     constexpr uint NUM_OF_SENDS1 = 301;
     constexpr uint NUM_OF_SENDS2 = 450;
+    auto scheduleFunc = [ this ]( std::coroutine_handle<> handle ) {
+        auto scheduleAwaitable = tp.schedule();
+        scheduleAwaitable.await_suspend( handle );
+    };
+
     auto task = [ & ]() -> coro::task< int > {
-        auto [ sender, receiver ] = cochan::makeChannel< int >( 21 );
+        auto [ sender, receiver ] = cochan::makeChannel< int >( 21, scheduleFunc );
 
         std::vector< cochan::AwaitableSend< int > > sendAwaitables1, sendAwaitables2;
         sendAwaitables1.reserve( NUM_OF_SENDS1 );
@@ -148,8 +158,13 @@ TEST_F( AwaitableLibcoroTest, SendAwaitableAndSenderMultipleReceivers )
 {
     constexpr uint NUM_OF_SENDS1 = 3000;
     constexpr uint NUM_OF_SENDS2 = 1030;
+    auto scheduleFunc = [ this ]( std::coroutine_handle<> handle ) {
+        auto scheduleAwaitable = tp.schedule();
+        scheduleAwaitable.await_suspend( handle );
+    };
+
     auto task = [ & ]() -> coro::task< int > {
-        auto [ sender, receiver ] = cochan::makeChannel< int >( 21 );
+        auto [ sender, receiver ] = cochan::makeChannel< int >( 21, scheduleFunc );
 
         std::vector< cochan::AwaitableSend< int > > sendAwaitables;
         sendAwaitables.reserve( NUM_OF_SENDS1 );
@@ -180,8 +195,13 @@ TEST_F( AwaitableLibcoroTest, SenderAndReceivebles )
 {
     constexpr uint NUM_OF_RECEIVES1 = 1030;
     constexpr uint NUM_OF_RECEIVES2 = 300;
+    auto scheduleFunc = [ this ]( std::coroutine_handle<> handle ) {
+        auto scheduleAwaitable = tp.schedule();
+        scheduleAwaitable.await_suspend( handle );
+    };
+
     auto task = [ & ]() -> coro::task< void > {
-        auto [ sender, receiver ] = cochan::makeChannel< int >( 21 );
+        auto [ sender, receiver ] = cochan::makeChannel< int >( 21, scheduleFunc );
         auto sendTask = send( tp, std::move( sender ), NUM_OF_RECEIVES1 + NUM_OF_RECEIVES2 );
 
         std::vector< cochan::AwaitableReceive< int > > receivables1, receivables2;
