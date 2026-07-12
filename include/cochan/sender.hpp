@@ -39,6 +39,7 @@ class AwaitableSend
 
         if( chan->receivers == 0 && chan->awaitableReceivers == 0 )
         {
+            guard.unlock();
             delete chan;
             return;
         }
@@ -125,6 +126,7 @@ class Sender
 
         if( chan->receivers == 0 && chan->awaitableReceivers == 0 )
         {
+            guard.unlock();
             delete chan;
             return;
         }
