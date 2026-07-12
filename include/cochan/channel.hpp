@@ -218,7 +218,7 @@ class Channel
 template< class T >
 std::tuple< Sender< T >, Receiver< T > > makeChannel( std::size_t capacity = 1, const ScheduleFunc& schedule = defaultScheduleFunc )
 {
-    auto chan = new Channel< T >( capacity, defaultScheduleFunc );
+    auto chan = new Channel< T >( capacity, schedule );
     return { Sender{ chan }, Receiver{ chan } };
 }
 
